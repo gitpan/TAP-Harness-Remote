@@ -1,6 +1,6 @@
 package TAP::Harness::Remote;
 
-our $VERSION = '1.00';
+our $VERSION = '1.05';
 
 use warnings;
 use strict;
@@ -49,6 +49,10 @@ configure this set by creating or editing your F<~/.remote_test> file:
       - -x
       - -S
       - '~/.ssh/master-%r@%h:%p'
+    rsync_args:
+      - -C
+      - --exclude
+      - blib
 
 See L</CONFIGURATION AND ENVIRONMENT> for more details on the
 individual configuration options.
@@ -134,14 +138,15 @@ L</CONFIGURATION>.
 
 sub default_config {
     return {
-        user     => "smoker",
-        host     => "smoke-server.example.com",
-        root     => "/home/smoker/remote-test/$ENV{USER}/",
-        perl     => "/home/smoker/bin/perl",
-        local    => [ "/home/$ENV{USER}/remote-test/" ],
-        ssh      => "/usr/bin/ssh",
-        ssh_args => [ "-x", "-S", "~/.ssh/master-%r@%h:%p" ],
-        master   => 1,
+        user       => "smoker",
+        host       => "smoke-server.example.com",
+        root       => "/home/smoker/remote-test/$ENV{USER}/",
+        perl       => "/home/smoker/bin/perl",
+        local      => [ "/home/$ENV{USER}/remote-test/" ],
+        ssh        => "/usr/bin/ssh",
+        ssh_args   => [ "-x", "-S", "~/.ssh/master-%r@%h:%p" ],
+        rsync_args => [ "-C" ],
+        master     => 1,
     };
 }
 
@@ -172,8 +177,13 @@ sub load_remote_config {
 
     # Ditto ssh_args
     $self->{remote_config}{ssh_args}
-        = [ split ' ', $self->{remote_config}{ssh_args} ]
+        = [ split ' ', ( $self->{remote_config}{ssh_args} || "") ]
         unless ref $self->{remote_config}{ssh_args};
+
+    # Also, rsync_args
+    $self->{remote_config}{rsync_args}
+        = [ split ' ', ($self->{remote_config}{rsync_args} || "") ]
+        unless ref $self->{remote_config}{rsync_args};
 }
 
 =head2 remote_config KEY
@@ -265,6 +275,7 @@ sub rsync {
         my $userhost = $self->userhost($host);
         my $return   = system(
             qw!rsync -avz --delete!,
+            @{$self->remote_config('rsync_args')},
             qq!--rsh!,
             $self->remote_config("ssh")
                 . " @{$self->remote_config('ssh_args')}",
@@ -393,6 +404,14 @@ Suggested defaults include C<-x> and C<-S ~/.ssh/master-%r@%h:%p>
 If a true value is given for this, will attempt to use OpenSSH master
 connections to reduce the overhead of making repeated connections to
 the remote host.
+
+=item rsync_args
+
+Either a string or an array reference of arguments to pass to rsync.
+You can use this, for say C<--exclude blib>.  The arguments C<-avz
+--delete> are fixed, and then any C<rsync_args> are appended.  C<-C>
+is generally a useful and correct option, and is the default when
+creating new F<.remote_test> files.  See L<rsync(1)> for more details.
 
 =back
 
